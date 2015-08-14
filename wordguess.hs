@@ -13,18 +13,17 @@ main = do
   guessWord word []
 
 guessWord word guessed = do
-  let maskedWord = maskWord word guessed
-  if not (elem '_' maskedWord) then
+  if (wordGuessed word guessed) then
     do
-      putStrLn "Yes! The word was " ++ word
+      putStrLn $ "Yes! The word was " ++ word
       return ()
-  else if (length guessed) > 12 then
+  else if (guessesUsed guessed) then
     do
       putStrLn $ "Bad Luck!  The word was " ++ word
       return ()
   else
     do
-      putStrLn $ maskedWord
+      putStrLn $ maskWord word guessed
       putStrLn $ "Guess a letter!"
       letter <- getLine
       guessWord word $ letter ++ guessed
@@ -39,9 +38,16 @@ gameWords :: Int -> Int -> [String] -> [String]
 gameWords min max words =
   filter (\w -> length w >= min && length w <= max) words
 
+maskWord :: String -> [Char] -> String
 maskWord word guessed =
   map (maskChar guessed) word
 
+maskChar :: [Char] -> Char -> Char
 maskChar guessed c
     | elem c guessed = c
     | otherwise = '_'
+
+wordGuessed :: String -> [Char] -> Bool
+wordGuessed word guessed = not (elem '_' (maskWord word guessed))
+
+guessesUsed guesses = (length guesses) > 12
