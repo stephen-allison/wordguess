@@ -48,6 +48,6 @@ maskChar guessed c
     | otherwise = '_'
 
 wordGuessed :: String -> [Char] -> Bool
-wordGuessed word guessed = not (elem '_' (maskWord word guessed))
+wordGuessed word guessed = all (\c -> elem c guessed) word
 
 guessesUsed guesses = (length guesses) > 12
