@@ -28,12 +28,19 @@ guessWord word guessed triesAllowed = do
     putStrLn $ turnStatus guessed triesAllowed
     putStrLn $ "Guess a letter!"
     line <- getLine
-    let letter = line !! 0
+    let letter = toLower $ firstChar line
     if (elem letter guessed) then do
       putStrLn $ "You have already tried " ++ [letter]
       guessWord word guessed triesAllowed
+    else if (not $ isLetter letter) then do
+      putStrLn "That wasn't a letter."
+      guessWord word guessed triesAllowed
     else do
       guessWord word ([letter] ++ guessed) triesAllowed
+
+firstChar :: [Char] -> Char
+firstChar [] = '*'
+firstChar (x:xs) = x
 
 -- load the word file and pick a random word
 chooseWord min max = withFile wordFile ReadMode $ \h -> do
@@ -67,3 +74,4 @@ wordGuessed word guessed = all (\c -> elem c guessed) word
 
 guessesUsed :: [a] -> Int -> Bool
 guessesUsed guesses allowed = (length guesses) >= allowed
+
