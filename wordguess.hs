@@ -1,38 +1,48 @@
--- dictionary loader
--- load the OSX dictionary file
+-- Simple word guessing game for helping learn Haskell
 
 import System.IO
 import System.Random
 import Data.Char
 
+-- location of the word fileon OSX
 wordFile = "/usr/share/dict/words"
 
 main = do
-  word <- chooseWord
+  word <- chooseWord 4 8
   putStrLn "I have thought of a word!"
-  guessWord word []
+  guessWord word [] 12
 
-guessWord word guessed = do
+-- loop until word guessed or all guesses used
+guessWord word guessed triesAllowed = do
   if (wordGuessed word guessed) then
     do
       putStrLn $ "Yes! The word was " ++ word
       return ()
-  else if (guessesUsed guessed) then
+  else if (guessesUsed guessed triesAllowed) then
     do
       putStrLn $ "Bad Luck!  The word was " ++ word
       return ()
   else
     do
       putStrLn $ maskWord word guessed
+      putStrLn $ turnStatus guessed triesAllowed
       putStrLn $ "Guess a letter!"
-      letter <- getLine
-      guessWord word $ letter ++ guessed
+      line <- getLine
+      let letter = line !! 0
+      guessWord word ([letter] ++ guessed) triesAllowed
 
-chooseWord = withFile wordFile ReadMode $ \h -> do
+-- load the word file and pick a random word
+chooseWord min max = withFile wordFile ReadMode $ \h -> do
   content <- hGetContents h
-  let words = gameWords 4 8 $ lines content
+  let words = gameWords min max $ lines content
   index <- randomRIO (0, length words)
   return $ map toLower $ words !! index
+
+
+
+turnStatus guesses allowed =
+  "You have already guessed " ++ guesses ++ " " ++ remaining ++ " remaining!"
+  where remaining = show $ allowed - length guesses
 
 gameWords :: Int -> Int -> [String] -> [String]
 gameWords min max words =
@@ -50,4 +60,5 @@ maskChar guessed c
 wordGuessed :: String -> [Char] -> Bool
 wordGuessed word guessed = all (\c -> elem c guessed) word
 
-guessesUsed guesses = (length guesses) > 12
+guessesUsed :: [a] -> Int -> Bool
+guessesUsed guesses allowed = (length guesses) >= allowed
