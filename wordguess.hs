@@ -1,6 +1,7 @@
 -- Simple word guessing game for helping learn Haskell
 
 import System.IO
+import System.Process
 import System.Random
 import Data.Char
 
@@ -11,24 +12,27 @@ main = do
   word <- chooseWord 4 8
   putStrLn "I have thought of a word!"
   guessWord word [] 12
+  definition <- readProcess "./definition.py" [word] []
+  putStrLn definition
 
 -- loop until word guessed or all guesses used
 guessWord word guessed triesAllowed = do
-  if (wordGuessed word guessed) then
-    do
-      putStrLn $ "Yes! The word was " ++ word
-      return ()
-  else if (guessesUsed guessed triesAllowed) then
-    do
-      putStrLn $ "Bad Luck!  The word was " ++ word
-      return ()
-  else
-    do
-      putStrLn $ maskWord word guessed
-      putStrLn $ turnStatus guessed triesAllowed
-      putStrLn $ "Guess a letter!"
-      line <- getLine
-      let letter = line !! 0
+  if (wordGuessed word guessed) then do
+    putStrLn $ "Yes! The word was " ++ word
+    return ()
+  else if (guessesUsed guessed triesAllowed) then do
+    putStrLn $ "Bad Luck!  The word was " ++ word
+    return ()
+  else do
+    putStrLn $ maskWord word guessed
+    putStrLn $ turnStatus guessed triesAllowed
+    putStrLn $ "Guess a letter!"
+    line <- getLine
+    let letter = line !! 0
+    if (elem letter guessed) then do
+      putStrLn $ "You have already tried " ++ [letter]
+      guessWord word guessed triesAllowed
+    else do
       guessWord word ([letter] ++ guessed) triesAllowed
 
 -- load the word file and pick a random word
@@ -38,10 +42,11 @@ chooseWord min max = withFile wordFile ReadMode $ \h -> do
   index <- randomRIO (0, length words)
   return $ map toLower $ words !! index
 
+turnStatus :: [Char] -> Int -> String
+turnStatus [] allowed = remaining ++ " guesses remaining!"
+  where remaining = show allowed
 
-
-turnStatus guesses allowed =
-  "You have already guessed " ++ guesses ++ " " ++ remaining ++ " remaining!"
+turnStatus guesses allowed = "You have already guessed " ++ guesses ++ ", " ++ remaining ++ " remaining!"
   where remaining = show $ allowed - length guesses
 
 gameWords :: Int -> Int -> [String] -> [String]
