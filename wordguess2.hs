@@ -42,10 +42,10 @@ makeGame minLen maxLen maxGuesses = do
   return $ newGame word maxGuesses
 
 
+main :: IO ()
 main = do
   game <- makeGame 4 8 12
   play game
-
 
 
 

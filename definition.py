@@ -12,10 +12,14 @@
 import DictionaryServices
 import sys
 
-if __name__ == "__main__":
+def get_definition(word):
     try:
-        word = sys.argv[1].decode('utf-8')
         result = DictionaryServices.DCSCopyTextDefinition(None, word, (0, len(word)))
-        print result.encode('utf-8')
+        return result.encode('utf-8')
     except:
-        print 'No definition available'
+        return 'No definition available'
+
+if __name__ == "__main__":
+    word = sys.argv[1].decode('utf-8')
+    definition = get_definition(word)
+    print definition

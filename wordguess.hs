@@ -8,6 +8,8 @@ import Data.Char
 -- location of the word fileon OSX
 wordFile = "/usr/share/dict/words"
 
+data Game = {wordToGuess :: String, lettersGuessed :: [Char], maxGuesses :: Int}
+
 main = do
   word <- chooseWord 4 8
   putStrLn "I have thought of a word!"
