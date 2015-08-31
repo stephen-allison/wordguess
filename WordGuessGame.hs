@@ -1,3 +1,5 @@
+module WordGuessGame where
+
 import Data.Char
 import System.IO
 import System.Process
@@ -29,15 +31,10 @@ chooseWord min max = randomWord (\w -> (length w) >= min && (length w) <= max)
 makeGame :: Int -> Int -> Int -> IO Game
 makeGame minLen maxLen maxGuesses = do
   word <- chooseWord minLen maxLen
+  let game = newGame word maxGuesses
   putStrLn "I have chosen a word!"
-  putStrLn $ (take (length word)) $ repeat '_'
-  return $ newGame word maxGuesses
-
-
-main :: IO ()
-main = do
-  game <- makeGame 4 8 12
-  play game
+  putStrLn $ maskedWord game
+  return $ game
 
 
 

@@ -1,79 +1,143 @@
--- Simple word guessing game for helping learn Haskell
-
+import Data.Char
 import System.IO
 import System.Process
-import System.Random
-import Data.Char
 
--- location of the word fileon OSX
-wordFile = "/usr/share/dict/words"
+import Words
+import WordDefinition
 
-data Game = {wordToGuess :: String, lettersGuessed :: [Char], maxGuesses :: Int}
 
+data GameStatus = Won | Lost | Playing deriving (Show, Eq)
+
+
+data Game = Game {wordToGuess :: String,
+                  lettersGuessed :: String,
+                  guessesLeft :: Int} deriving (Show)
+
+newGame :: String -> Int -> Game
+newGame word guesses = Game { wordToGuess = word,
+                              lettersGuessed = [],
+                              guessesLeft = guesses}
+
+
+
+
+chooseWord :: Int -> Int -> IO String
+chooseWord min max = randomWord (\w -> (length w) >= min && (length w) <= max)
+
+
+
+makeGame :: Int -> Int -> Int -> IO Game
+makeGame minLen maxLen maxGuesses = do
+  word <- chooseWord minLen maxLen
+  putStrLn "I have chosen a word!"
+  putStrLn $ (take (length word)) $ repeat '_'
+  return $ newGame word maxGuesses
+
+
+main :: IO ()
 main = do
-  word <- chooseWord 4 8
-  putStrLn "I have thought of a word!"
-  guessWord word [] 12
-  definition <- readProcess "./definition.py" [word] []
+  game <- makeGame 4 8 12
+  play game
+
+
+
+play :: Game -> IO ()
+play g = do
+  putStrLn "Pick a letter"
+  line <- getLine
+  letter <- inputFeedback . alreadyGuessed g . letterFromLine $ line
+  let updatedGame = guessLetter g letter
+  let turnResult = feedback updatedGame
+  putStrLn $ unlines turnResult
+  case gameStatus updatedGame of Won -> endGame updatedGame
+                                 Lost -> endGame updatedGame
+                                 Playing -> play updatedGame
+
+
+
+endGame :: Game -> IO ()
+endGame g = do
+  definition <- definition $ wordToGuess g
   putStrLn definition
+  return ()
 
--- loop until word guessed or all guesses used
-guessWord word guessed triesAllowed = do
-  if (wordGuessed word guessed) then do
-    putStrLn $ "Yes! The word was " ++ word
-    return ()
-  else if (guessesUsed guessed triesAllowed) then do
-    putStrLn $ "Bad Luck!  The word was " ++ word
-    return ()
-  else do
-    putStrLn $ maskWord word guessed
-    putStrLn $ turnStatus guessed triesAllowed
-    putStrLn $ "Guess a letter!"
-    line <- getLine
-    let letter = toLower $ firstChar line
-    if (elem letter guessed) then do
-      putStrLn $ "You have already tried " ++ [letter]
-      guessWord word guessed triesAllowed
-    else if (not $ isLetter letter) then do
-      putStrLn "That wasn't a letter."
-      guessWord word guessed triesAllowed
-    else do
-      guessWord word ([letter] ++ guessed) triesAllowed
 
-firstChar :: [Char] -> Char
-firstChar [] = '*'
-firstChar (x:xs) = x
 
--- load the word file and pick a random word
-chooseWord min max = withFile wordFile ReadMode $ \h -> do
-  content <- hGetContents h
-  let words = gameWords min max $ lines content
-  index <- randomRIO (0, length words)
-  return $ map toLower $ words !! index
+inputFeedback :: Maybe Char -> IO (Maybe Char)
+inputFeedback Nothing = do
+  putStrLn "That wasn't a letter, or you already tried it"
+  return Nothing
 
-turnStatus :: [Char] -> Int -> String
-turnStatus [] allowed = remaining ++ " guesses remaining!"
-  where remaining = show allowed
+inputFeedback (Just c) = do
+  return (Just c)
 
-turnStatus guesses allowed = "You have already guessed " ++ guesses ++ ", " ++ remaining ++ " remaining!"
-  where remaining = show $ allowed - length guesses
 
-gameWords :: Int -> Int -> [String] -> [String]
-gameWords min max words =
-  filter (\w -> length w >= min && length w <= max) words
 
-maskWord :: String -> [Char] -> String
-maskWord word guessed =
-  map (maskChar guessed) word
+letterFromLine :: String -> Maybe Char
+letterFromLine [] = Nothing
+letterFromLine s
+  | isLetter c = Just c
+  | otherwise = Nothing
+  where c = toLower . (!! 0) $ s
 
-maskChar :: [Char] -> Char -> Char
-maskChar guessed c
-    | elem c guessed = c
-    | otherwise = '_'
 
-wordGuessed :: String -> [Char] -> Bool
-wordGuessed word guessed = all (\c -> elem c guessed) word
 
-guessesUsed :: [a] -> Int -> Bool
-guessesUsed guesses allowed = (length guesses) >= allowed
+alreadyGuessed :: Game -> Maybe Char -> Maybe Char
+alreadyGuessed g Nothing = Nothing
+alreadyGuessed g (Just c)
+  | elem c guessed = Nothing
+  | otherwise = Just c
+  where guessed = lettersGuessed g
 
+
+
+guessLetter :: Game -> Maybe Char -> Game
+guessLetter game Nothing = game
+guessLetter game (Just letter) = Game{ wordToGuess = wordToGuess game,
+                                       lettersGuessed = [letter] ++ lettersGuessed game,
+                                       guessesLeft = (guessesLeft game) - 1 }
+
+
+
+gameStatus :: Game -> GameStatus
+gameStatus g
+  | wordGuessed g = Won
+  | guessesLeft g == 0 = Lost
+  | otherwise = Playing
+
+
+
+wordGuessed :: Game -> Bool
+wordGuessed g = all (\c -> elem c guessed) word
+  where word = wordToGuess g
+        guessed = lettersGuessed g
+
+
+
+maskedWord :: Game -> String
+maskedWord g = map (maskChar guessed) word
+  where word = wordToGuess g
+        guessed = lettersGuessed g
+        maskChar guessed c
+          | elem c guessed  = c
+          | otherwise = '_'
+
+
+
+feedback :: Game -> [String]
+feedback g
+    | gs == Won = wonFeedback g
+    | gs == Lost = lostFeedback g
+    | gs == Playing = playingFeedback g
+    where gs = gameStatus g
+
+playingFeedback :: Game -> [String]
+playingFeedback g = [maskedWord g,
+                    "You have guessed " ++ lettersGuessed g,
+                    show (guessesLeft g) ++ " guesses remaining!"]
+
+lostFeedback :: Game -> [String]
+lostFeedback g = ["Bad Luck!  No more guesses!", "The word was " ++ wordToGuess g]
+
+wonFeedback :: Game -> [String]
+wonFeedback g = ["Yes!  You guessed the word was " ++ wordToGuess g]
