@@ -17,49 +17,63 @@ acceptConnection gameStore sock = do
 
 serveGame gameStore h = do
   input <- hGetLine h
-  hPutStrLn h input
-  g <- handleInput gameStore input
+  (gid,g) <- handleInput gameStore input
+  let messages = fmap (hPutStrLn h) $ gameMessages g
+  hPutStrLn h $ "Playing Game #" ++ show gid
+  sequence messages
   putStrLn $ show g
-  hPutStrLn h $ show g
   hFlush h
   hClose h
 
-
+handleInput :: MVar [(Int,Game)] -> String -> IO (Int, Maybe Game)
 handleInput gameStore input
   | trim input == "new" = do
                     g <- makeGame 4 8 12
-                    storeGame gameStore g
-                    return $ Just g
+                    gameId <- storeNewGame gameStore g
+                    return $ (gameId, Just g)
   | otherwise = do
-                game <- findGame gameStore $ words input
-                let letter =  (words input) !! 1
+                let (gameId, letter) = parseInput input
+                game <- findGame gameStore gameId
                 let updated = fmap ((flip guessLetter) (letterFromLine letter)) game
-                storeMaybeGame gameStore updated
-                return updated
+                storeMaybeGame gameStore gameId updated
+                return (gameId, updated)
 
+gameMessages Nothing = []
+gameMessages (Just game) = feedback game
 
+parseInput :: String -> (Int, String)
+parseInput input = (gameId, letter)
+  where
+    inputWords = words input
+    gameId = read (inputWords !! 0) :: Int
+    letter = inputWords !! 1
 
-findGame gameStore inputWords = do
+findGame :: MVar [(Int,Game)] -> Int -> IO (Maybe Game)
+findGame gameStore gameId = do
   gameList <- takeMVar gameStore
-  let gameId = read (inputWords !! 0) :: Int
-  putStrLn $ "find game " ++ show inputWords
-  putStrLn $ "find game " ++ show gameList
+  putStrLn $ "find game " ++ show gameId
 
-  if gameId < (length gameList) then do
-    let game = snd (gameList !! gameId)
-    putStrLn $ "find game " ++ show game
-    putMVar gameStore gameList
-    return $ Just game
-  else do
-    putMVar gameStore gameList
-    return Nothing
+  let game = lookup gameId gameList
+  putMVar gameStore gameList
+  putStrLn $ "find game " ++ show game
+  return game
 
 
-storeMaybeGame gameStore (Just game) = storeGame gameStore game
-storeMaybeGame _ Nothing = return ()
+storeMaybeGame :: MVar [(Int,Game)] -> Int -> Maybe Game -> IO ()
+storeMaybeGame gameStore gameId (Just game) = storeGame gameStore gameId game
+storeMaybeGame _ _ Nothing = return ()
 
-storeGame gameStore game = do
+storeGame :: MVar [(Int,Game)] -> Int -> Game -> IO ()
+storeGame gameStore gameId game = do
   gameList <- takeMVar gameStore
-  putMVar gameStore $ (length gameList, game) : gameList
+  let gameList' = filter (\(gid,g) -> gid /= gameId) gameList
+  putMVar gameStore $ (gameId, game) : gameList'
+
+storeNewGame :: MVar [(Int,Game)] -> Game -> IO Int
+storeNewGame gameStore game = do
+  gameList <- takeMVar gameStore
+  let gameId = length gameList
+  putMVar gameStore $ (gameId, game) : gameList
+  return gameId
 
 trim = unwords . words
