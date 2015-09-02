@@ -4,6 +4,8 @@ import System.IO
 
 import WordGuessGame
 
+type GameStore = MVar [(Int,Game)]
+
 main = withSocketsDo $ do
   sock <- listenOn $ PortNumber 5000
   gameStore <- newEmptyMVar
@@ -25,7 +27,7 @@ serveGame gameStore h = do
   hFlush h
   hClose h
 
-handleInput :: MVar [(Int,Game)] -> String -> IO (Int, Maybe Game)
+handleInput :: GameStore -> String -> IO (Int, Maybe Game)
 handleInput gameStore input
   | trim input == "new" = do
                     g <- makeGame 4 8 12
@@ -48,7 +50,7 @@ parseInput input = (gameId, letter)
     gameId = read (inputWords !! 0) :: Int
     letter = inputWords !! 1
 
-findGame :: MVar [(Int,Game)] -> Int -> IO (Maybe Game)
+findGame :: GameStore -> Int -> IO (Maybe Game)
 findGame gameStore gameId = do
   gameList <- takeMVar gameStore
   putStrLn $ "find game " ++ show gameId
@@ -59,17 +61,17 @@ findGame gameStore gameId = do
   return game
 
 
-storeMaybeGame :: MVar [(Int,Game)] -> Int -> Maybe Game -> IO ()
+storeMaybeGame :: GameStore -> Int -> Maybe Game -> IO ()
 storeMaybeGame gameStore gameId (Just game) = storeGame gameStore gameId game
 storeMaybeGame _ _ Nothing = return ()
 
-storeGame :: MVar [(Int,Game)] -> Int -> Game -> IO ()
+storeGame :: GameStore -> Int -> Game -> IO ()
 storeGame gameStore gameId game = do
   gameList <- takeMVar gameStore
   let gameList' = filter (\(gid,g) -> gid /= gameId) gameList
   putMVar gameStore $ (gameId, game) : gameList'
 
-storeNewGame :: MVar [(Int,Game)] -> Game -> IO Int
+storeNewGame :: GameStore -> Game -> IO Int
 storeNewGame gameStore game = do
   gameList <- takeMVar gameStore
   let gameId = length gameList
