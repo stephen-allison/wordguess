@@ -4,6 +4,8 @@ import System.IO
 
 import WordGuessGame
 
+data Action = New | Play (Int, Char)
+
 type GameStore = MVar [(Int,Game)]
 
 main = withSocketsDo $ do
@@ -28,27 +30,32 @@ serveGame gameStore h = do
   hClose h
 
 handleInput :: GameStore -> String -> IO (Int, Maybe Game)
-handleInput gameStore input
-  | trim input == "new" = do
-                    g <- makeGame 4 8 12
-                    gameId <- storeNewGame gameStore g
-                    return $ (gameId, Just g)
-  | otherwise = do
-                let (gameId, letter) = parseInput input
-                game <- findGame gameStore gameId
-                let updated = fmap ((flip guessLetter) (letterFromLine letter)) game
-                storeMaybeGame gameStore gameId updated
-                return (gameId, updated)
+handleInput gameStore input = do
+  case parseInput input of New -> startGame gameStore
+                           Play (gameId, letter) -> updateGame gameStore gameId letter
+
+updateGame gameStore gameId letter = do
+  game <- findGame gameStore gameId
+  let updated = fmap ((flip guessLetter) (Just letter)) game
+  storeMaybeGame gameStore gameId updated
+  return (gameId, updated)
+
+startGame gameStore = do
+  g <- makeGame 4 8 12
+  gameId <- storeNewGame gameStore g
+  return (gameId, Just g)
 
 gameMessages Nothing = []
 gameMessages (Just game) = feedback game
 
-parseInput :: String -> (Int, String)
-parseInput input = (gameId, letter)
-  where
+parseInput :: String -> Action
+parseInput input
+  | trim input == "new" = New
+  | otherwise = Play (gameId, letter)
+    where
     inputWords = words input
     gameId = read (inputWords !! 0) :: Int
-    letter = inputWords !! 1
+    letter = (inputWords !! 1) !! 0
 
 findGame :: GameStore -> Int -> IO (Maybe Game)
 findGame gameStore gameId = do
