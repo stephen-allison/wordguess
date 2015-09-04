@@ -1,3 +1,4 @@
+import Data.Char
 import Network
 import Control.Concurrent
 import System.IO
@@ -6,83 +7,114 @@ import WordGuessGame
 
 data Action = New | Play (Int, Char)
 
-type GameStore = MVar [(Int,Game)]
+type GameInfo = (Int,Game)
+type GameStore = MVar [GameInfo]
 
 main = withSocketsDo $ do
   sock <- listenOn $ PortNumber 5000
-  gameStore <- newEmptyMVar
-  putMVar gameStore []
+  gameStore <- newMVar []
   acceptConnection gameStore sock
+
 
 acceptConnection gameStore sock = do
   (h,_,_) <- accept sock
   forkIO $ serveGame gameStore h
   acceptConnection gameStore sock
 
+
 serveGame gameStore h = do
   input <- hGetLine h
-  (gid,g) <- handleInput gameStore input
-  let messages = fmap (hPutStrLn h) $ gameMessages g
-  hPutStrLn h $ "Playing Game #" ++ show gid
-  sequence messages
-  putStrLn $ show g
+  gameInfo <- handleInput gameStore input
+  showGame h gameInfo
+  cleanup gameStore gameInfo
   hFlush h
   hClose h
 
-handleInput :: GameStore -> String -> IO (Int, Maybe Game)
+
+cleanup :: GameStore -> Maybe GameInfo -> IO ()
+cleanup _ Nothing = return ()
+cleanup gameStore (Just (gid, g)) = do
+  case gameStatus g of Won -> removeGame gameStore gid
+                       Lost -> removeGame gameStore gid
+                       _ -> return ()
+
+
+showGame :: Handle -> Maybe GameInfo -> IO ()
+showGame h (Just (gid, g)) = do
+  let messages = fmap (hPutStrLn h) $ feedback g
+  hPutStrLn h $ "Playing Game #" ++ show gid
+  sequence messages
+  putStrLn $ show g
+
+
+showGame h Nothing = do
+  hPutStrLn h "No game found"
+
+
+handleInput :: GameStore -> String -> IO (Maybe GameInfo)
 handleInput gameStore input = do
-  case parseInput input of New -> startGame gameStore
-                           Play (gameId, letter) -> updateGame gameStore gameId letter
+  case parseInput input of
+    Just New -> startGame gameStore
+    Just (Play (gameId, letter)) -> updateGame gameStore gameId letter
+    _ -> return Nothing
 
+
+updateGame :: GameStore -> Int -> Char -> IO (Maybe GameInfo)
 updateGame gameStore gameId letter = do
-  game <- findGame gameStore gameId
-  let updated = fmap ((flip guessLetter) (Just letter)) game
-  storeMaybeGame gameStore gameId updated
-  return (gameId, updated)
+  gameInfo <- findGame gameStore gameId
+  case gameInfo of Just (gid, game) -> doUpdate gameStore gid game letter
+                   Nothing -> return Nothing
 
+
+doUpdate :: GameStore -> Int -> Game -> Char -> IO (Maybe GameInfo)
+doUpdate gameStore gameId game letter = do
+  let updated = guessLetter game (Just letter)
+  storeGame gameStore gameId updated
+  return $ Just (gameId, updated)
+
+
+startGame :: GameStore -> IO (Maybe GameInfo)
 startGame gameStore = do
   g <- makeGame 4 8 12
   gameId <- storeNewGame gameStore g
-  return (gameId, Just g)
+  return $ Just (0, g)
 
-gameMessages Nothing = []
-gameMessages (Just game) = feedback game
 
-parseInput :: String -> Action
-parseInput input
-  | trim input == "new" = New
-  | otherwise = Play (gameId, letter)
-    where
-    inputWords = words input
-    gameId = read (inputWords !! 0) :: Int
-    letter = (inputWords !! 1) !! 0
+parseInput :: String -> Maybe Action
+parseInput input = turnParams $ words input
+  where
+  turnParams (g:c:rest)
+    | all isDigit g = Just $ Play ((read g) :: Int, c !! 0)
+    | otherwise = Nothing
+  turnParams (n:[])
+    | n == "new" = Just New
+    | otherwise = Nothing
 
-findGame :: GameStore -> Int -> IO (Maybe Game)
+
+findGame :: GameStore -> Int -> IO (Maybe GameInfo)
 findGame gameStore gameId = do
-  gameList <- takeMVar gameStore
-  putStrLn $ "find game " ++ show gameId
-
-  let game = lookup gameId gameList
-  putMVar gameStore gameList
-  putStrLn $ "find game " ++ show game
-  return game
+  gameList <- readMVar gameStore
+  return $ (,) <$> Just gameId <*> lookup gameId gameList
 
 
-storeMaybeGame :: GameStore -> Int -> Maybe Game -> IO ()
-storeMaybeGame gameStore gameId (Just game) = storeGame gameStore gameId game
-storeMaybeGame _ _ Nothing = return ()
+removeGame :: GameStore -> Int -> IO ()
+removeGame gameStore gameId = do
+  modifyMVar_ gameStore $ \gameList -> do
+    return $ filter (\(gid,g) -> gid /= gameId) gameList
+
 
 storeGame :: GameStore -> Int -> Game -> IO ()
 storeGame gameStore gameId game = do
-  gameList <- takeMVar gameStore
-  let gameList' = filter (\(gid,g) -> gid /= gameId) gameList
-  putMVar gameStore $ (gameId, game) : gameList'
+  modifyMVar_ gameStore $ \gameList -> do
+    let gameList' = filter (\(gid,g) -> gid /= gameId) gameList
+    return $ (gameId, game) : gameList'
+
 
 storeNewGame :: GameStore -> Game -> IO Int
 storeNewGame gameStore game = do
-  gameList <- takeMVar gameStore
-  let gameId = length gameList
-  putMVar gameStore $ (gameId, game) : gameList
+  gameId <- modifyMVar gameStore $ \gameList -> do
+      let gameId = length gameList
+      return $ ((gameId, game) : gameList, gameId)
   return gameId
 
 trim = unwords . words
